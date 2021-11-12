@@ -47,6 +47,10 @@ int main(int, char **)
     SDL_Event event;
     float time = 0;
 
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+
     // Vertex array object
     unsigned int VAO;
     glGenVertexArrays(1, &VAO);
@@ -129,18 +133,19 @@ int main(int, char **)
     glDeleteShader(vertexShaderId);
     glDeleteShader(fragmentShaderId);
 
+    int resolution[2];
+    SDL_GL_GetDrawableSize(window, &resolution[0], &resolution[1]);
+    auto location = glGetUniformLocation(shaderProgram, "resolution");
+    float resolutionf[] = { (float) resolution[0], (float) resolution[1]};
+    glUniform2fv(location, 1, resolutionf);
 
-    float resolution[] = {640.f, 480.f};
-    auto location = glGetUniformLocation(shaderProgram, "res");
-    glUniform2fv(location, 1, resolution);
-
-    uint32_t frameStart, frameTime; 
+    uint32_t frameStart, frameTime;
     GLenum err;
     glClearColor(0.0, 0.0, 0.0, 1.0);
     while (true)
     {
         frameStart = SDL_GetTicks();
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
         glUniform1f(glGetUniformLocation(shaderProgram, "time"), time);
         while ((err = glGetError()) != GL_NO_ERROR)
@@ -154,9 +159,8 @@ int main(int, char **)
             break;
         SDL_GL_SwapWindow(window);
         frameTime = SDL_GetTicks() - frameStart;
-        if (frameTime < FRAME_DURATION) {
-            std::cout << "waiting" << std::endl;
-            std::cout << FRAME_DURATION - frameTime << std::endl;
+        if (frameTime < FRAME_DURATION)
+        {
             SDL_Delay(FRAME_DURATION - frameTime);
         }
         time += FRAME_DURATION / 1000;
