@@ -3,6 +3,9 @@
 #include <SDL.h>
 #include <glad/glad.h>
 
+constexpr int FPS = 60;
+constexpr double FRAME_DURATION = 1000.0f / FPS;
+
 int main(int, char **)
 {
 
@@ -131,13 +134,14 @@ int main(int, char **)
     auto location = glGetUniformLocation(shaderProgram, "res");
     glUniform2fv(location, 1, resolution);
 
+    uint32_t frameStart, frameTime; 
     GLenum err;
     glClearColor(0.0, 0.0, 0.0, 1.0);
     while (true)
     {
+        frameStart = SDL_GetTicks();
         glClear(GL_COLOR_BUFFER_BIT);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        time += .0166666;
         glUniform1f(glGetUniformLocation(shaderProgram, "time"), time);
         while ((err = glGetError()) != GL_NO_ERROR)
         {
@@ -149,5 +153,12 @@ int main(int, char **)
         if (event.type == SDL_QUIT)
             break;
         SDL_GL_SwapWindow(window);
+        frameTime = SDL_GetTicks() - frameStart;
+        if (frameTime < FRAME_DURATION) {
+            std::cout << "waiting" << std::endl;
+            std::cout << FRAME_DURATION - frameTime << std::endl;
+            SDL_Delay(FRAME_DURATION - frameTime);
+        }
+        time += FRAME_DURATION / 1000;
     }
 }

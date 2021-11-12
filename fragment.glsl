@@ -1,5 +1,6 @@
 #version 330 core
 uniform vec2 res;
+// time, in seconds
 uniform float time;
 out vec4 FragColor;
 
