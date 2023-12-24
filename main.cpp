@@ -2,13 +2,37 @@
 #include <fstream>
 #include <SDL.h>
 #include <glad/glad.h>
+#include "Shader.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include "Model.h"
+
+#include "Camera.h"
 
 constexpr int FPS = 60;
 constexpr double FRAME_DURATION = 1000.0f / FPS;
 
+Camera camera = Camera(glm::vec3(0.0, 0.0, 3.0));
+
+bool processEvent(SDL_Event &event)
+{
+    camera.processEvent(event);
+    if (event.type == SDL_KEYUP && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
+        return true;
+    if (event.type == SDL_QUIT)
+        return true;
+    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED)
+    {
+        glViewport(0, 0, event.window.data1 * 2.0, event.window.data2 * 2.0);
+    }
+
+    return false;
+}
+
 int main(int, char **)
 {
-
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
         SDL_Log("Unable to initialize SDL: %s", SDL_GetError());
@@ -44,6 +68,7 @@ int main(int, char **)
     void *context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, context);
     gladLoadGL();
+
     SDL_Event event;
     float time = 0;
 
@@ -51,111 +76,71 @@ int main(int, char **)
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
 
-    // Vertex array object
-    unsigned int VAO;
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
-
-    float quad[] = {
-        -1.0, 1.0,  // top left
-        -1.0, -1.0, // bottom left
-        1.0, 1.0,   // top right
-        1.0, -1.0,  // bottom right
-    };
-    unsigned int indices[] = {
-        0, 1, 2,
-        2, 1, 3};
-
-    unsigned int EBO;
-    glGenBuffers(1, &EBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    unsigned int VBO;
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
-
     // Vertex shader
-    std::string vertexShaderSource;
-    std::getline(std::ifstream("../vertex.glsl"), vertexShaderSource, '\0');
-    unsigned int vertexShaderId;
-    vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
-    const char *source = vertexShaderSource.c_str();
-    glShaderSource(vertexShaderId, 1, &(source), nullptr);
-    glCompileShader(vertexShaderId);
-
-    int success;
-    char infoLogi[512];
-    glGetShaderiv(vertexShaderId, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(vertexShaderId, 512, nullptr, infoLogi);
-        std::cout << "ERROR:SADER::VERTEX::COMPILATION\n"
-                  << infoLogi << std::endl;
-    }
-
-    // Fragment shader
-    std::string fragmentShaderSource;
-    std::getline(std::ifstream("../fragment.glsl"), fragmentShaderSource, '\0');
-    unsigned int fragmentShaderId;
-    fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
-    const char *fsource = fragmentShaderSource.c_str();
-    glShaderSource(fragmentShaderId, 1, &(fsource), nullptr);
-    glCompileShader(fragmentShaderId);
-
-    glGetShaderiv(fragmentShaderId, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        glGetShaderInfoLog(fragmentShaderId, 512, nullptr, infoLogi);
-        std::cout << "ERROR:SHADER::FRAGMENT::COMPILATION\n"
-                  << infoLogi << std::endl;
-    }
-
-    // Program
-    unsigned int shaderProgram;
-    shaderProgram = glCreateProgram();
-
-    glAttachShader(shaderProgram, vertexShaderId);
-    glAttachShader(shaderProgram, fragmentShaderId);
-    glLinkProgram(shaderProgram);
-    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-    if (!success)
-    {
-        glGetProgramInfoLog(shaderProgram, 512, nullptr, infoLogi);
-        std::cout << "ERROR:PROGRAM::COMPILATION\n"
-                  << infoLogi << std::endl;
-    }
-    glUseProgram(shaderProgram);
-    glDeleteShader(vertexShaderId);
-    glDeleteShader(fragmentShaderId);
+    auto shaderProgram = Shader("../vertex.glsl", "../fragment.glsl");
 
     int resolution[2];
     SDL_GL_GetDrawableSize(window, &resolution[0], &resolution[1]);
-    auto location = glGetUniformLocation(shaderProgram, "resolution");
-    float resolutionf[] = { (float) resolution[0], (float) resolution[1]};
+    SDL_ShowCursor(0);
+    float resolutionf[] = {(float)resolution[0], (float)resolution[1]};
+
+    shaderProgram.use();
+    shaderProgram.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+    auto location = glGetUniformLocation(shaderProgram.id, "resolution");
     glUniform2fv(location, 1, resolutionf);
+
+    /* Transforms */
+
+    glm::mat4 projection = glm::perspective(glm::radians(45.0f), 640.0f / 480, 0.1f, 100.0f);
+    // trans = glm::translate(trans, glm::vec3(1.0f, 1.0f, 0.0f));
 
     uint32_t frameStart, frameTime;
     GLenum err;
     glClearColor(0.0, 0.0, 0.0, 1.0);
+
+    // shaderProgram.setInt("buzz", 0); // set 0 to "uniform / sampler2d " to it matche to glActiveTexture(GL_TEXTURE)
+    // shaderProgram.setInt("woody", 1);
+    glViewport(0, 0, 640 * 2, 480 * 2);
+
+    glm::mat4 model = glm::mat4(1.0f);
+
+    Model bp("../assets/backpack/backpack.obj");
+
     while (true)
     {
         frameStart = SDL_GetTicks();
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-        glUniform1f(glGetUniformLocation(shaderProgram, "time"), time);
+        static glm::vec3 lightPos = glm::vec3{1.2f, 1.0f, 2.0f};
+        shaderProgram.use();
+        shaderProgram.setVec3("lightPos", lightPos);
+        shaderProgram.setVec3("cameraPos", camera.position);
+        shaderProgram.setFloat("time", time);
+        shaderProgram.setVec3("light.ambient", 0.2f, 0.2f, 0.2f);
+        shaderProgram.setVec3("light.diffuse", 0.5f, 0.5f, 0.5f); // darken diffuse light a bit
+        shaderProgram.setVec3("light.specular", 0.4f, 0.4f, 0.4f);
+        shaderProgram.setInt("material.diffuse", 0);
+        shaderProgram.setInt("material.specular", 1);
+
+        model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 2.5f, 1.0f));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram.id, "view"), 1, GL_FALSE, glm::value_ptr(camera.getView()));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram.id, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        glUniformMatrix4fv(glGetUniformLocation(shaderProgram.id, "model"), 1, GL_FALSE, glm::value_ptr(model));
+
+        bp.Draw(shaderProgram);
+
         while ((err = glGetError()) != GL_NO_ERROR)
-        {
             std::cout << err << std::endl;
+
+        bool quit = false;
+        while (SDL_PollEvent(&event))
+        {
+            if (processEvent(event))
+            {
+                quit = true;
+                break;
+            }
         }
-        SDL_PollEvent(&event);
-        if (event.type == SDL_KEYUP && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)
-            break;
-        if (event.type == SDL_QUIT)
+        if (quit)
             break;
         SDL_GL_SwapWindow(window);
         frameTime = SDL_GetTicks() - frameStart;
@@ -165,4 +150,5 @@ int main(int, char **)
         }
         time += FRAME_DURATION / 1000;
     }
+    SDL_Quit();
 }

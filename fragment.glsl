@@ -2,16 +2,50 @@
 uniform vec2 resolution;
 // time, in seconds
 uniform float time;
+uniform vec3 lightPos;
+uniform vec3 lightColor;
+uniform vec3 cameraPos;
+
+in vec3 oColor;
+in vec2 oTexCoord;
+in vec3 oNormal;
+in vec3 oFragPos;
 out vec4 FragColor;
 
-void main()
-{
-    vec2 uv = gl_FragCoord.xy / resolution.xy * 2.0 - 1.0;
-    float aspect = resolution.x / resolution.y;
-    uv.x *= aspect;
-    float d = length(uv);
-    float radius = 0.5;
-	float t = step(clamp(d, 0.0, 1.0), radius);
-    vec3 col = 0.5 + 0.5*cos(time + uv.xyx+vec3(0,2,4));
-    FragColor = vec4(col, t);
-} 
+struct Material {
+    sampler2D diffuse;
+    sampler2D specular;
+    float shininess;
+};
+
+uniform Material material;
+in vec2 texCoords;
+
+struct Light {
+    vec3 position;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+uniform Light light;
+
+void main() {
+    // ambient
+    vec3 ambient = light.ambient * vec3(texture(material.diffuse, texCoords));
+
+    // diffuse 
+    vec3 norm = normalize(oNormal);
+    vec3 lightDir = normalize(lightPos - oFragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = light.diffuse * diff * vec3(texture(material.diffuse, texCoords));
+
+    // specular
+    vec3 viewDir = normalize(cameraPos - oFragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    vec3 specular = light.specular * lightColor * spec * vec3(texture(material.specular, texCoords));
+
+    vec3 result = ambient + diffuse + specular ;
+    FragColor = vec4(result, 1.0);
+}
